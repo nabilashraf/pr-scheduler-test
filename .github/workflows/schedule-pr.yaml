@@ -32,7 +32,7 @@ jobs:
         run: |
           PR_NUMBER=${{ github.event.issue.number }}
           TARGET_BRANCH=$(gh pr view $PR_NUMBER --json baseRefName -q '.baseRefName')
-          CHECKS_STATE=$(gh pr checks $PR_NUMBER --json status -q '.status')
+          CHECKS_STATE=$(gh pr checks $PR_NUMBER --json status -q '.state')
 
           if [[ "$TARGET_BRANCH" != "main" ]]; then
             echo "This PR is not targeting 'main'. Exiting." && exit 1
