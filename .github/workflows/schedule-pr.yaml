@@ -1,0 +1,61 @@
+name: Schedule PR Merge
+
+on:
+  issue_comment:
+    types: [created]
+
+jobs:
+  schedule-merge:
+    if: github.event.issue.pull_request != null # Run only for comments on PRs
+    runs-on: ubuntu-latest
+
+    steps:
+      # Step 1: Check out the repository
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+      # Step 2: Parse the comment for the /schedule-merge command
+      - name: Parse Comment Command
+        id: parse_command
+        run: |
+          COMMENT_BODY="${{ github.event.comment.body }}"
+          if [[ "$COMMENT_BODY" =~ ^/schedule-merge[[:space:]]([0-2][0-9]):([0-5][0-9])$ ]]; then
+            echo "MERGE_HOUR=${BASH_REMATCH[1]}" >> $GITHUB_ENV
+            echo "MERGE_MINUTE=${BASH_REMATCH[2]}" >> $GITHUB_ENV
+          else
+            echo "Invalid command. Skipping workflow." && exit 0
+          fi
+
+      # Step 3: Validate PR checks and branch
+      - name: Validate PR
+        id: validate_pr
+        run: |
+          PR_NUMBER=${{ github.event.issue.number }}
+          TARGET_BRANCH=$(gh pr view $PR_NUMBER --json baseRefName -q '.baseRefName')
+          CHECKS_STATE=$(gh pr checks $PR_NUMBER --json status -q '.status')
+
+          if [[ "$TARGET_BRANCH" != "main" ]]; then
+            echo "This PR is not targeting 'main'. Exiting." && exit 1
+          fi
+
+          if [[ "$CHECKS_STATE" != "SUCCESS" ]]; then
+            echo "Required checks have not passed. Exiting." && exit 1
+          fi
+
+      # Step 4: Wait until the specified time in Europe/London time zone
+      - name: Wait for Scheduled Time
+        run: |
+          export TZ=Europe/London # Set time zone
+          CURRENT_TIME=$(date +%H:%M)
+          TARGET_TIME="${{ env.MERGE_HOUR }}:${{ env.MERGE_MINUTE }}"
+          while [[ "$CURRENT_TIME" < "$TARGET_TIME" ]]; do
+            echo "Current time: $CURRENT_TIME (Europe/London). Waiting for $TARGET_TIME..."
+            sleep 60
+            CURRENT_TIME=$(date +%H:%M)
+          done
+
+      # Step 5: Merge the PR
+      - name: Merge PR
+        run: |
+          PR_NUMBER=${{ github.event.issue.number }}
+          gh pr merge $PR_NUMBER --merge --auto --body "Scheduled merge by bot."
